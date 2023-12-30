@@ -17,7 +17,7 @@ import pickle
 
 EXPAND_ABBREVIATIONS = True if os.environ['EXPAND_ABBREVIATIONS'] == '1' else False
 
-es = Elasticsearch(['es01:9200'])
+es = Elasticsearch([os.environ['ELASTICSEARCH_URL']])
 
 def parse_cover_date(coverDate):
     """
@@ -27,7 +27,7 @@ def parse_cover_date(coverDate):
         coverDate (str): Cover date (in string format) of a publication.
     Returns: publication_date (dict): {"month" : xx, "year":  yyyy}
     """
-    year_pattern = re.compile("\d{4}")
+    year_pattern = re.compile("[0-9]{4}")
     coverDate = coverDate.replace("Available on ", "").replace("Available online ", "")
     if coverDate == "":
         return None
@@ -166,7 +166,7 @@ def update_mapping(index_name, type_name):
 class Helper():
     def __init__(self):
         self.conn = psycopg2.connect("dbname=%s user=%s password=%s host=%s port=%s" % \
-                    ("kinderminer", "kinderminer", "supersecretpassword", "km_postgres", "5432"))
+                    (os.environ['POSTGRES_DB'], os.environ['POSTGRES_USER'], os.environ['POSTGRES_PASSWORD'], os.environ['POSTGRES_HOST'], os.environ['POSTGRES_PORT']))
         self.cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     def get_metadata_from_xml(self, filepath):
@@ -363,7 +363,7 @@ class Helper():
 
 def download_allie():
     psql_fetching_conn = psycopg2.connect("dbname=%s user=%s password=%s host=%s port=%s" % \
-                ("kinderminer", "kinderminer", "supersecretpassword", "km_postgres", "5432"))
+                (os.environ['POSTGRES_DB'], os.environ['POSTGRES_USER'], os.environ['POSTGRES_PASSWORD'], os.environ['POSTGRES_HOST'], os.environ['POSTGRES_PORT']))
     cur = psql_fetching_conn.cursor()
 
     cur.execute("SELECT md5 FROM alice_versions ORDER BY id DESC;")

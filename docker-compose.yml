@@ -1,62 +1,95 @@
-version: '2.3'
 services:
-  es01:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.2.0
-    container_name: es01
+  km_indexer:
+      build: .
+      container_name: km_indexer
+      command: python index_pubmed.py bulk --n_min ${N_MIN} --n_max ${N_MAX}
+      restart: no
+
+      networks:
+        - kmnet
+
+      env_file:
+        - .env
+
+      environment:
+        POSTGRES_HOST: postgres
+        POSTGRES_PORT: 5432
+        ELASTICSEARCH_URL: http://elasticsearch:9200
+
+      depends_on:
+        elasticsearch:
+          condition: service_healthy
+        postgres:
+          condition: service_healthy
+
+      security_opt:
+        - no-new-privileges:true
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    container_name: km_indexer_elasticsearch
+    restart: unless-stopped
+    mem_limit: 512m
+
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+    env_file:
+      - .env
+
     environment:
       - node.name=es01
       - discovery.type=single-node
       - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+
+    networks:
+      - kmnet
+
+    healthcheck:
+      test: curl --write-out 'HTTP %{http_code}' --fail --silent --output /dev/null http://localhost:9200/
+      start_interval: 5s
+      interval: 17s
+      start_period: 40s
+      timeout: 2s
+      retries: 2
+
     ulimits:
       memlock:
         soft: -1
         hard: -1
-    volumes:
-      - type: bind
-        source: ./es_data
-        target: /usr/share/elasticsearch/data
-    ports:
-      - 9200:9200
-    networks:
-      - kmnet
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
 
-  ingest_elastic:
-      build: .
-      networks:
-        - kmnet
-      command: "wait-for-it -t 120 -s es01:9200 -s km_postgres:5432 -- python index_pubmed.py bulk --n_min 1 --n_max 1"
-      depends_on:
-        - es01
-      environment:
-        - PYTHONUNBUFFERED=1
-        - EXPAND_ABBREVIATIONS=${EXPAND_ABBREVIATIONS}
+    security_opt:
+      - no-new-privileges:true
 
   postgres:
-      container_name: km_postgres
-      restart: always
-      image: postgres:latest
-      environment:
-          - POSTGRES_PASSWORD=supersecretpassword
-          - POSTGRES_USER=kinderminer
+      image: postgres:15-alpine
+      container_name: km_indexer_postgres
+      restart: unless-stopped
+
       volumes:
-          - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-          - type: bind
-            source: ./allie_data
-            target: /var/lib/postgresql/data
+        - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+        - ./allie_data:/var/lib/postgresql/data
+
+      env_file:
+        - .env
+
       networks:
         - kmnet
-      ports:
-        - "5432:5432"
+
+      healthcheck:
+        test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+        start_interval: 3s
+        interval: 19s
+        start_period: 10s
+        timeout: 2s
+        retries: 2
+
+      security_opt:
+        - no-new-privileges:true
 
 volumes:
-  esdata01:
-    driver: local
+  es_data:
 
 networks:
   kmnet:
